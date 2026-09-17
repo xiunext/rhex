@@ -21,6 +21,8 @@ jobs:
   quality:
     name: Quality gates
     runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=1024
 
     steps:
       - name: Checkout repository
