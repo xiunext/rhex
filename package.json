@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "test": "cross-env NODE_OPTIONS=\"--conditions=react-server --max-old-space-size=1024\" tsx --test test/*.test.ts",
+    "test": "cross-env NODE_OPTIONS=--conditions=react-server tsx --test test/*.test.ts",
     "start": "next start",
     "start:prod": "cross-env NODE_ENV=production next build && cross-env NODE_ENV=production next start",
     "setup": "tsx scripts/setup.ts",
