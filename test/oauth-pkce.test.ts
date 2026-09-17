@@ -38,7 +38,7 @@ test("OAuth PKCE parameter parsing accepts omission and validates S256-only requ
   })
 
   assert.equal(parseOAuthPkceParameters({ codeChallenge: challenge, codeChallengeMethod: "plain" }).isValid, false)
-  assert.equal(parseOAuthPkceParameters({ codeChallenge: challenge }).isValid, false)
+  assert.equal(parseOAuthPkceParameters({ codeChallenge: challenge, codeChallengeMethod: undefined }).isValid, false)
   assert.equal(parseOAuthPkceParameters({ codeChallenge: challenge.slice(1), codeChallengeMethod: "S256" }).isValid, false)
   assert.equal(parseOAuthPkceParameters({ codeChallenge: "", codeChallengeMethod: undefined }).isValid, false)
 })
