@@ -20,6 +20,7 @@ import { getBoards } from "@/lib/boards"
 import { getInviteCodeList } from "@/lib/invite-codes"
 import { getLevelDefinitions } from "@/lib/level-system"
 import { getAdminOAuthClientPageData } from "@/lib/oauth-server"
+import { resolveSiteOrigin } from "@/lib/site-origin"
 import { getAdminPaymentApplicationPageData } from "@/lib/payment-applications"
 import { getRedeemCodeList } from "@/lib/redeem-codes"
 import { readSearchParam } from "@/lib/search-params"
@@ -155,6 +156,7 @@ export default async function AdminSettingsPage(
 
   const uploadLevelOptions = buildUserLevelThresholdOptions(levelDefinitions)
   const uploadVipLevelOptions = buildVipLevelThresholdOptions()
+  const oauthIssuer = resolved.section === "oauth" ? await resolveSiteOrigin() : undefined
   const defaultSettingsSection = getDefaultAdminSettingsSection(adminTier, effectivePermissionSet)
   const breadcrumbs: Array<{ label: string; href?: string }> = [
     { label: "后台控制台", href: "/admin" },
@@ -345,6 +347,7 @@ export default async function AdminSettingsPage(
             }}
             initialClients={oauthClients}
             initialPaymentApplications={paymentApplications}
+            oidcIssuer={oauthIssuer}
           />
         ) : null}
       </AdminSettingsWorkspace>

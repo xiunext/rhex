@@ -15,6 +15,7 @@ import { useAdminMutation } from "@/hooks/use-admin-mutation"
 import { adminPost } from "@/lib/admin-client"
 import type { OAuthClientAdminPageData } from "@/lib/oauth-server"
 import type { PaymentApplicationAdminPageData } from "@/lib/payment-applications"
+import { buildOpenIdConfiguration, OPENID_CONFIGURATION_PATH } from "@/lib/oauth-oidc-metadata"
 
 interface AdminOAuthSettingsInitialSettings {
   oauthServerEnabled: boolean
@@ -30,6 +31,7 @@ interface AdminOAuthSettingsPageProps {
   initialSettings: AdminOAuthSettingsInitialSettings
   initialClients?: OAuthClientAdminPageData | null
   initialPaymentApplications?: PaymentApplicationAdminPageData | null
+  oidcIssuer?: string
 }
 
 export function AdminOAuthSettingsPage({
@@ -37,6 +39,7 @@ export function AdminOAuthSettingsPage({
   initialSettings,
   initialClients,
   initialPaymentApplications,
+  oidcIssuer,
 }: AdminOAuthSettingsPageProps) {
   if (activeSubTab === "clients") {
     if (!initialClients) {
@@ -66,13 +69,15 @@ export function AdminOAuthSettingsPage({
     )
   }
 
-  return <AdminOAuthSettingsForm initialSettings={initialSettings} />
+  return <AdminOAuthSettingsForm initialSettings={initialSettings} oidcIssuer={oidcIssuer ?? ""} />
 }
 
 function AdminOAuthSettingsForm({
   initialSettings,
+  oidcIssuer,
 }: {
   initialSettings: AdminOAuthSettingsInitialSettings
+  oidcIssuer: string
 }) {
   const [draft, setDraft] = useState(() => ({
     oauthServerEnabled: Boolean(initialSettings.oauthServerEnabled),
@@ -83,6 +88,7 @@ function AdminOAuthSettingsForm({
     oauthRefreshTokenTtlDays: String(initialSettings.oauthRefreshTokenTtlDays ?? 30),
   }))
   const { isPending, runMutation } = useAdminMutation()
+  const oidcMetadata = oidcIssuer ? buildOpenIdConfiguration(oidcIssuer) : null
 
   function updateDraft<Key extends keyof typeof draft>(field: Key, value: (typeof draft)[Key]) {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -184,6 +190,23 @@ function AdminOAuthSettingsForm({
         </div>
       </SettingsSection>
 
+      <SettingsSection
+        title="OpenID Connect 服务信息"
+        description="在 Gitea 的 OpenID Connect 自动发现 URL 中填写发现地址。站点根地址是 Issuer，根页面返回 HTML；发现地址会返回 JSON 配置。"
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <OidcInfo label="Issuer（站点根地址）" value={oidcMetadata?.issuer ?? ""} />
+          <OidcInfo label="自动发现 URL（Gitea 中填写此项）" value={`${oidcMetadata?.issuer ?? ""}${OPENID_CONFIGURATION_PATH}`} />
+          <OidcInfo label="Authorization endpoint" value={oidcMetadata?.authorization_endpoint ?? ""} />
+          <OidcInfo label="Token endpoint" value={oidcMetadata?.token_endpoint ?? ""} />
+          <OidcInfo label="UserInfo endpoint" value={oidcMetadata?.userinfo_endpoint ?? ""} />
+          <OidcInfo label="JWKS endpoint" value={oidcMetadata?.jwks_uri ?? ""} />
+          <OidcInfo label="Revocation endpoint" value={oidcMetadata?.revocation_endpoint ?? ""} />
+          <OidcInfo label="Scopes" value="openid profile email" />
+          <OidcInfo label="PKCE / ID Token" value="S256 / HS256" />
+        </div>
+      </SettingsSection>
+
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={isPending}>
           {isPending ? "保存中..." : "保存 OAuth 设置"}
@@ -193,5 +216,14 @@ function AdminOAuthSettingsForm({
         </span>
       </div>
     </form>
+  )
+}
+
+function OidcInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 space-y-2">
+      <p className="text-sm font-medium">{label}</p>
+      <code className="block break-all rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs">{value || "无法解析站点地址"}</code>
+    </div>
   )
 }

@@ -29,8 +29,10 @@ import {
 } from "@/db/oauth-queries"
 import { apiError } from "@/lib/api-route"
 import { getServerSiteSettings } from "@/lib/site-settings"
+import { createOAuthIdToken } from "@/lib/oauth-oidc"
 import { normalizeHttpUrl } from "@/lib/shared/url"
 import { normalizePageSize, normalizePositiveInteger, normalizeTrimmedText } from "@/lib/shared/normalizers"
+import { resolveSiteOrigin } from "@/lib/site-origin"
 import { getUserDisplayName } from "@/lib/user-display"
 import {
   createOAuthOpaqueToken,
@@ -899,7 +901,7 @@ async function authenticateTokenClient(input: {
 
   return {
     clientId: client.clientId,
-    clientSecretProvided: Boolean(clientSecret),
+    clientSecret: client.clientSecretHash ? clientSecret || null : null,
   }
 }
 
@@ -908,6 +910,7 @@ function buildTokenResponse(input: {
   refreshToken: string
   expiresIn: number
   scopes: readonly string[]
+  idToken?: string
 }) {
   return {
     access_token: input.accessToken,
@@ -915,6 +918,7 @@ function buildTokenResponse(input: {
     expires_in: input.expiresIn,
     refresh_token: input.refreshToken,
     scope: serializeOAuthScopes(input.scopes),
+    ...(input.idToken ? { id_token: input.idToken } : {}),
   }
 }
 
@@ -934,6 +938,7 @@ export async function exchangeOAuthToken(input: {
     return exchangeAuthorizationCode({
       formData: input.formData,
       clientId: authenticatedClient.clientId,
+      clientSecret: authenticatedClient.clientSecret,
       settings,
     })
   }
@@ -942,6 +947,7 @@ export async function exchangeOAuthToken(input: {
     return exchangeRefreshToken({
       formData: input.formData,
       clientId: authenticatedClient.clientId,
+      clientSecret: authenticatedClient.clientSecret,
       settings,
     })
   }
@@ -952,6 +958,7 @@ export async function exchangeOAuthToken(input: {
 async function exchangeAuthorizationCode(input: {
   formData: FormData
   clientId: string
+  clientSecret: string | null
   settings: Awaited<ReturnType<typeof getServerSiteSettings>>
 }) {
   const code = getFormValue(input.formData, "code")
@@ -1008,6 +1015,21 @@ async function exchangeAuthorizationCode(input: {
   const expiresIn = Math.max(60, Math.floor(input.settings.oauthAccessTokenTtlMinutes * 60))
   const accessTokenExpiresAt = new Date(Date.now() + expiresIn * 1000)
   const refreshTokenExpiresAt = new Date(Date.now() + input.settings.oauthRefreshTokenTtlDays * 24 * 60 * 60 * 1000)
+  let idToken: string | undefined
+  if (authorizationCode.scopes.includes("openid")) {
+    if (!input.clientSecret) {
+      throw new OAuthProtocolError("invalid_client", "OIDC 登录需要配置客户端密钥", 401)
+    }
+
+    idToken = createOAuthIdToken({
+      issuer: await resolveSiteOrigin(),
+      clientId: authorizationCode.clientId,
+      subject: authorizationCode.userId,
+      clientSecret: input.clientSecret,
+      expiresIn,
+      nonce: authorizationCode.nonce,
+    })
+  }
 
   const created = await consumeOAuthAuthorizationCodeAndCreateTokenPair({
     authorizationCodeId: authorizationCode.id,
@@ -1029,12 +1051,14 @@ async function exchangeAuthorizationCode(input: {
     refreshToken,
     expiresIn,
     scopes: authorizationCode.scopes,
+    idToken,
   })
 }
 
 async function exchangeRefreshToken(input: {
   formData: FormData
   clientId: string
+  clientSecret: string | null
   settings: Awaited<ReturnType<typeof getServerSiteSettings>>
 }) {
   const refreshTokenValue = getFormValue(input.formData, "refresh_token")
@@ -1060,6 +1084,20 @@ async function exchangeRefreshToken(input: {
   const expiresIn = Math.max(60, Math.floor(input.settings.oauthAccessTokenTtlMinutes * 60))
   const accessTokenExpiresAt = new Date(Date.now() + expiresIn * 1000)
   const refreshTokenExpiresAt = new Date(Date.now() + input.settings.oauthRefreshTokenTtlDays * 24 * 60 * 60 * 1000)
+  let idToken: string | undefined
+  if (refreshToken.scopes.includes("openid")) {
+    if (!input.clientSecret) {
+      throw new OAuthProtocolError("invalid_client", "OIDC 登录需要配置客户端密钥", 401)
+    }
+
+    idToken = createOAuthIdToken({
+      issuer: await resolveSiteOrigin(),
+      clientId: refreshToken.clientId,
+      subject: refreshToken.userId,
+      clientSecret: input.clientSecret,
+      expiresIn,
+    })
+  }
   const rotated = await rotateOAuthRefreshToken({
     oldRefreshTokenId: refreshToken.id,
     oldAccessTokenId: refreshToken.accessTokenId,
@@ -1081,6 +1119,7 @@ async function exchangeRefreshToken(input: {
     refreshToken: nextRefreshToken,
     expiresIn,
     scopes: refreshToken.scopes,
+    idToken,
   })
 }
 
