@@ -9,6 +9,7 @@ import {
   OAuthProtocolError,
   resolveOAuthAuthorizationRequest,
 } from "@/lib/oauth-server"
+import { readOAuthFormValue } from "@/lib/oauth-utils"
 
 function getFormValue(formData: FormData, key: string) {
   const value = formData.get(key)
@@ -35,8 +36,8 @@ export async function POST(request: Request) {
     scope: getFormValue(formData, "scope"),
     state: getFormValue(formData, "state"),
     nonce: getFormValue(formData, "nonce"),
-    codeChallenge: getFormValue(formData, "code_challenge"),
-    codeChallengeMethod: getFormValue(formData, "code_challenge_method"),
+    codeChallenge: readOAuthFormValue(formData, "code_challenge"),
+    codeChallengeMethod: readOAuthFormValue(formData, "code_challenge_method"),
   }
 
   const resolved = await resolveOAuthAuthorizationRequest({

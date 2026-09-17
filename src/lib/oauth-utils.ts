@@ -104,6 +104,11 @@ export function isOAuthPkceRequired(clientSecretHash: string | null | undefined)
   return !clientSecretHash
 }
 
+export function readOAuthFormValue(formData: FormData, key: string) {
+  const value = formData.get(key)
+  return typeof value === "string" ? value.trim() : undefined
+}
+
 export function parseOAuthPkceParameters(input: {
   codeChallenge: unknown
   codeChallengeMethod: unknown

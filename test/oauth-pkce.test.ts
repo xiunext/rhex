@@ -6,6 +6,7 @@ import {
   isOAuthPkceRequired,
   isValidPkceCodeVerifier,
   parseOAuthPkceParameters,
+  readOAuthFormValue,
   verifyPkceChallenge,
 } from "@/lib/oauth-utils"
 
@@ -41,4 +42,20 @@ test("OAuth PKCE parameter parsing accepts omission and validates S256-only requ
   assert.equal(parseOAuthPkceParameters({ codeChallenge: challenge, codeChallengeMethod: undefined }).isValid, false)
   assert.equal(parseOAuthPkceParameters({ codeChallenge: challenge.slice(1), codeChallengeMethod: "S256" }).isValid, false)
   assert.equal(parseOAuthPkceParameters({ codeChallenge: "", codeChallengeMethod: undefined }).isValid, false)
+})
+
+test("OAuth confirmation form preserves omitted PKCE parameters", () => {
+  const formData = new FormData()
+
+  const pkce = parseOAuthPkceParameters({
+    codeChallenge: readOAuthFormValue(formData, "code_challenge"),
+    codeChallengeMethod: readOAuthFormValue(formData, "code_challenge_method"),
+  })
+
+  assert.deepEqual(pkce, {
+    isPresent: false,
+    isValid: true,
+    codeChallenge: null,
+    codeChallengeMethod: null,
+  })
 })
