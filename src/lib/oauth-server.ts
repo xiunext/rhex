@@ -35,11 +35,13 @@ import { getUserDisplayName } from "@/lib/user-display"
 import {
   createOAuthOpaqueToken,
   hashOAuthToken,
+  isOAuthPkceRequired,
   isOAuthRedirectUriAllowed,
   isValidPkceCodeVerifier,
   normalizeOAuthRedirectUri,
   normalizeOAuthRedirectUris,
   normalizeOAuthScopes,
+  parseOAuthPkceParameters,
   parseOAuthScopeList,
   safeOAuthClientSecretHashCompare,
   serializeOAuthScopes,
@@ -81,8 +83,8 @@ export type OAuthAuthorizeSuccess = {
   scopes: OAuthScope[]
   state: string | null
   nonce: string | null
-  codeChallenge: string
-  codeChallengeMethod: "S256"
+  codeChallenge: string | null
+  codeChallengeMethod: "S256" | null
   consentRequired: boolean
 }
 
@@ -727,8 +729,7 @@ export async function resolveOAuthAuthorizationRequest(input: {
   const requestedRedirectUri = normalizeTrimmedText(input.redirectUri, 2048)
   const state = normalizeTrimmedText(input.state, 500) || null
   const nonce = normalizeTrimmedText(input.nonce, 500) || null
-  const codeChallenge = normalizeTrimmedText(input.codeChallenge, 256)
-  const codeChallengeMethod = normalizeTrimmedText(input.codeChallengeMethod, 32)
+  const pkce = parseOAuthPkceParameters(input)
 
   if (!clientId) {
     return buildAuthorizeError({ error: "invalid_request", errorDescription: "缺少 client_id" })
@@ -748,8 +749,19 @@ export async function resolveOAuthAuthorizationRequest(input: {
     return buildAuthorizeError({ error: "unsupported_response_type", errorDescription: "仅支持 response_type=code", redirectUri, state })
   }
 
-  if (codeChallengeMethod !== "S256" || !codeChallenge) {
+  if (!pkce.isValid) {
     return buildAuthorizeError({ error: "invalid_request", errorDescription: "必须使用 PKCE S256", redirectUri, state })
+  }
+
+  if (!pkce.isPresent) {
+    const clientAuthentication = await findOAuthClientSecretByClientId(clientId)
+    if (!clientAuthentication || clientAuthentication.status !== OAuthClientStatus.APPROVED) {
+      return buildAuthorizeError({ error: "unauthorized_client", errorDescription: "OAuth 应用不存在或未通过审核", redirectUri, state })
+    }
+
+    if (isOAuthPkceRequired(clientAuthentication.clientSecretHash)) {
+      return buildAuthorizeError({ error: "invalid_request", errorDescription: "公共客户端必须使用 PKCE S256", redirectUri, state })
+    }
   }
 
   try {
@@ -770,8 +782,8 @@ export async function resolveOAuthAuthorizationRequest(input: {
       scopes,
       state,
       nonce,
-      codeChallenge,
-      codeChallengeMethod: "S256",
+      codeChallenge: pkce.codeChallenge,
+      codeChallengeMethod: pkce.codeChallengeMethod,
       consentRequired,
     }
   } catch (error) {
@@ -946,12 +958,8 @@ async function exchangeAuthorizationCode(input: {
   const redirectUri = getFormValue(input.formData, "redirect_uri")
   const codeVerifier = getFormValue(input.formData, "code_verifier")
 
-  if (!code || !redirectUri || !codeVerifier) {
-    throw new OAuthProtocolError("invalid_request", "缺少 code、redirect_uri 或 code_verifier")
-  }
-
-  if (!isValidPkceCodeVerifier(codeVerifier)) {
-    throw new OAuthProtocolError("invalid_grant", "code_verifier 格式不正确")
+  if (!code || !redirectUri) {
+    throw new OAuthProtocolError("invalid_request", "缺少 code 或 redirect_uri")
   }
 
   const authorizationCode = await findOAuthAuthorizationCodeByHash(hashOAuthToken(code))
@@ -971,12 +979,28 @@ async function exchangeAuthorizationCode(input: {
     throw new OAuthProtocolError("invalid_client", "客户端已停用", 401)
   }
 
-  if (!verifyPkceChallenge({
-    verifier: codeVerifier,
-    challenge: authorizationCode.codeChallenge,
-    method: authorizationCode.codeChallengeMethod,
-  })) {
-    throw new OAuthProtocolError("invalid_grant", "PKCE 校验失败")
+  if (authorizationCode.codeChallenge || authorizationCode.codeChallengeMethod) {
+    if (!authorizationCode.codeChallenge || authorizationCode.codeChallengeMethod !== "S256") {
+      throw new OAuthProtocolError("invalid_grant", "授权码 PKCE 参数无效")
+    }
+
+    if (!codeVerifier) {
+      throw new OAuthProtocolError("invalid_request", "缺少 code_verifier")
+    }
+
+    if (!isValidPkceCodeVerifier(codeVerifier)) {
+      throw new OAuthProtocolError("invalid_grant", "code_verifier 格式不正确")
+    }
+
+    if (!verifyPkceChallenge({
+      verifier: codeVerifier,
+      challenge: authorizationCode.codeChallenge,
+      method: authorizationCode.codeChallengeMethod,
+    })) {
+      throw new OAuthProtocolError("invalid_grant", "PKCE 校验失败")
+    }
+  } else if (codeVerifier) {
+    throw new OAuthProtocolError("invalid_grant", "授权码未启用 PKCE")
   }
 
   const accessToken = createOAuthOpaqueToken("atk", 32)

@@ -688,8 +688,8 @@ model OAuthAuthorizationCode {
   userId              Int
   redirectUri         String
   scopes              String[]
-  codeChallenge       String
-  codeChallengeMethod String
+  codeChallenge       String?
+  codeChallengeMethod String?
   nonce               String?
   state               String?
   expiresAt           DateTime    @db.Timestamptz(3)

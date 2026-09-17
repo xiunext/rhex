@@ -96,6 +96,49 @@ export function isValidPkceCodeVerifier(value: unknown): value is string {
   return /^[A-Za-z0-9._~-]{43,128}$/.test(verifier)
 }
 
+export function isValidPkceS256Challenge(value: unknown): value is string {
+  return /^[A-Za-z0-9_-]{43}$/.test(String(value ?? ""))
+}
+
+export function isOAuthPkceRequired(clientSecretHash: string | null | undefined) {
+  return !clientSecretHash
+}
+
+export function parseOAuthPkceParameters(input: {
+  codeChallenge: unknown
+  codeChallengeMethod: unknown
+}) {
+  const codeChallenge = typeof input.codeChallenge === "string" ? input.codeChallenge.trim() : ""
+  const codeChallengeMethod = typeof input.codeChallengeMethod === "string" ? input.codeChallengeMethod.trim() : ""
+  const isPresent = (input.codeChallenge !== undefined && input.codeChallenge !== null)
+    || (input.codeChallengeMethod !== undefined && input.codeChallengeMethod !== null)
+
+  if (!isPresent) {
+    return {
+      isPresent: false,
+      isValid: true,
+      codeChallenge: null,
+      codeChallengeMethod: null,
+    } as const
+  }
+
+  if (codeChallengeMethod !== "S256" || !isValidPkceS256Challenge(codeChallenge)) {
+    return {
+      isPresent: true,
+      isValid: false,
+      codeChallenge: null,
+      codeChallengeMethod: null,
+    } as const
+  }
+
+  return {
+    isPresent: true,
+    isValid: true,
+    codeChallenge,
+    codeChallengeMethod: "S256",
+  } as const
+}
+
 export function createPkceS256Challenge(verifier: string) {
   return createHash("sha256").update(verifier, "ascii").digest("base64url")
 }

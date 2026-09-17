@@ -296,8 +296,12 @@ function buildHiddenFields(resolved: OAuthAuthorizeSuccess, currentPath: string)
     ["redirect_uri", resolved.redirectUri],
     ["response_type", resolved.responseType],
     ["scope", resolved.scope],
-    ["code_challenge", resolved.codeChallenge],
-    ["code_challenge_method", resolved.codeChallengeMethod],
+    ...(resolved.codeChallenge && resolved.codeChallengeMethod
+      ? [
+          ["code_challenge", resolved.codeChallenge] as [string, string],
+          ["code_challenge_method", resolved.codeChallengeMethod] as [string, string],
+        ]
+      : []),
     ["continue", currentPath],
     ...(resolved.state ? [["state", resolved.state] as [string, string]] : []),
     ...(resolved.nonce ? [["nonce", resolved.nonce] as [string, string]] : []),
